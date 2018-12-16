@@ -189,6 +189,7 @@ class SpatialPooler:
 		self._boostFactors = numpy.ones(numColumns)
 
 		self._learn = learn 
+		self._iterNumber = 0
 
 		self._debug = debug
 
@@ -237,8 +238,10 @@ class SpatialPooler:
 		ConnectedSynapses[mask] = 1
 		return ConnectedSynapses
 
-	def matrixRowOverlap(self, vector, matrix):
+	def matrixRowOverlap(self, vector, matrixTemplate):
+		matrix = numpy.copy(matrixTemplate)
 		vector = vector.reshape(-1)
+
 		assert(len(vector) == len(matrix[0]))
 
 		for rowIndex, row in enumerate(matrix):
@@ -252,8 +255,8 @@ class SpatialPooler:
 		self._activePotentialSynapses = self.matrixRowOverlap(inputVector, self._potentialConnections)
 		self._activeConnectedSynapses = self.matrixRowOverlap(inputVector, self._connectedSynapses)
 
-		if self._debug == True:
-			print("activeConnectedSynapses = \n", self._activeConnectedSynapses)
+		#if self._debug == True:
+			#print("activeConnectedSynapses = \n", self._activeConnectedSynapses)
 
 	def updateRawColumnActivations(self):
 		#sum each row
@@ -388,6 +391,7 @@ class SpatialPooler:
 		
 		if self._learn == True:
 			self.learn()
+		
 
 	def updateDutyCyclesHelper(self, dutyCycles, nextInput, windowSize):
 		assert(windowSize >= 1)
@@ -396,6 +400,8 @@ class SpatialPooler:
 	def updateBoostFactorsGlobal(self):
 		targetDensity = self._sparsity
 		self._boostFactors = numpy.exp( (targetDensity - self._activeDutyCycles) * self._boostStrength)
+
+	#def bumpUpWeakColumns(self):
 
 	#def raisePermanenceToThreshold(self, )
 
@@ -417,7 +423,7 @@ if __name__ == '__main__':
 				synConnectedPermThreshold=0.1,
 				dutyCyclePeriod=1000,
 				boostStrength=0.1,
-				learn=True,
+				learn=False,
 				seed=12345,
 				debug=True)
 	
@@ -426,11 +432,18 @@ if __name__ == '__main__':
 	#print(sp._permanences)
 	#print(sp._connectedSynapses)
 
+	initial_connections = numpy.copy(sp._connectedSynapses)
+	print("initial_connections", initial_connections)
+
 	# Test overlap computation
 	inputVector = numpy.array([0,1,1,1,0,0,1])
 	sp.compute(inputVector)
 	columnActivations = sp._columnActivations
 	print("columnActivations = \n", columnActivations)
+
+	print("final_connections", sp._connectedSynapses)
+
+
 
 
 	# Test neighborhood finding

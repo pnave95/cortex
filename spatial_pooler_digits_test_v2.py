@@ -36,7 +36,7 @@ if __name__ == '__main__':
 	synConnectedPermThreshold = 0.10
 	dutyCyclePeriod=100
 	boostStrength=1.0
-	learn=True
+	learn=False
 	seed=12345
 	debug=False
 	sp = SpatialPooler(inputDimensions, columnDimensions, potentialRadius, potentialPct, sparsity, stimulusThreshold, synPermInactiveDec, synPermActiveInc, synConnectedPermThreshold, dutyCyclePeriod, boostStrength, learn, seed, debug)
@@ -49,29 +49,39 @@ if __name__ == '__main__':
 	# test / train split
 	x_train, x_test, y_train, y_test = train_test_split(binary_digits.data, binary_digits.target, test_size=0.25, random_state=0)
 
+	# get initial permanence data
+	initial_permanences = numpy.copy(sp._permanences)
+	initial_connections = numpy.copy(sp._connectedSynapses)
+	inital_boostFactors = numpy.copy(sp._boostFactors)
+	print("Initial permanences = ", initial_permanences)
+
 	# Visualize SDR training
 	N_train = 1347
 	i = 0
-	for image in x_train:
+	for image in x_train[0:10]:
 		sp.compute(image.reshape((8,8)))
 		SDR = sp._columnActivations
-		if i % 200 == 0:
+		#if i % 500 == 0:
+		if i % 1 == 0:
 			print(i)
 			visualizeSDR(image.reshape((8,8)), SDR.reshape((16,16)), 2.0)
+			print("connections unchanged: ", numpy.array_equal(sp._connectedSynapses, initial_connections))
 		i += 1
 
 	# classification learning
+	'''
 	SDR_train = numpy.zeros((N_train, 256))
-	sp._learn = True
+	sp._learn = False
 	k = 0
 	for image in x_train:
 		sp.compute(image.reshape((8,8)))
 		SDR = sp._columnActivations
 		SDR_train[k] = SDR
-		if k % 200 == 0:
+		if k % 500 == 0:
 			print(k)
 			visualizeSDR(image.reshape((8,8)), SDR.reshape((16,16)), 2.0)
 		k += 1
+	'''
 
 	# visualize classification learning
 
@@ -90,7 +100,14 @@ if __name__ == '__main__':
 			visualizeSDR(image.reshape((8,8)), SDR.reshape((16,16)), 2.0)
 	'''
 
-	print("Final permanences = ", sp._permanences)
+	#print("Final permanences = ", sp._permanences)
+	final_permanences = sp._permanences
+	final_connections = sp._connectedSynapses
+	final_boostFactors = sp._boostFactors
+
+	print("perms unchanged: ", numpy.array_equal(sp._permanences, initial_permanences))
+	print("connections unchanged: ", numpy.array_equal(initial_connections, final_connections))
+	print("boostFactors unchanged: ", numpy.array_equal(inital_boostFactors, final_boostFactors))
 
 
 
