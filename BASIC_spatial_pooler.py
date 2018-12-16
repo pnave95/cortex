@@ -130,6 +130,8 @@ class SpatialPooler:
 				 synPermInactiveDec=0.008,
 				 synPermActiveInc=0.05,
 				 synConnectedPermThreshold=0.1,
+				 dutyCyclePeriod=1000,
+				 boostStrength=0.0,
 				 learn=True,
 				 seed=12345,
 				 debug=False):
@@ -156,6 +158,9 @@ class SpatialPooler:
 		self._synPermActiveInc = synPermActiveInc
 		self._synConnectedPermThreshold = synConnectedPermThreshold
 
+		self._synBelowStimulusPermInc = 0.05
+		self._dutyCyclePeriod = dutyCyclePeriod
+
 		#self._flatDataShape = (numInputs, numColumns)
 		# rows are cortical columns, columns are inputs
 		self._flatDataShape = (numColumns, numInputs)
@@ -170,8 +175,18 @@ class SpatialPooler:
 		self._activeConnectedSynapses = numpy.zeros((numColumns, numInputs))
 
 		self._rawColumnActivations = numpy.zeros(numColumns)
+		self._boostedColumnActivations = numpy.zeros(numColumns)
 		self._uninhibitedColumnActivations = numpy.zeros(numColumns)
 		self._columnActivations = numpy.zeros(numColumns)
+
+		self._boostFactors = numpy.ones(numColumns)
+		activeDutyCycles = numpy.ones(numColumns)
+		#self._activeDutyCycles = activeDutyCycles.fill(sparsity)
+		self._activeDutyCycles = self.initActiveDutyCycles(sparsity, numColumns)
+		#print("activeDutyCycles", activeDutyCycles)
+
+		self._boostStrength = boostStrength
+		self._boostFactors = numpy.ones(numColumns)
 
 		self._learn = learn 
 
@@ -195,6 +210,10 @@ class SpatialPooler:
 
 		return potentialConnections
 
+	def initActiveDutyCycles(self, sparsity, numColumns):
+		activeDutyCycles = numpy.ones(numColumns)
+		activeDutyCycles.fill(sparsity)
+		return activeDutyCycles
 
 	def initPermanences(self):
 		#permanences = numpy.zeros(self._flatDataShape)
@@ -240,17 +259,23 @@ class SpatialPooler:
 		#sum each row
 		self._rawColumnActivations = numpy.sum(self._activeConnectedSynapses, 1)
 
+	def updateBoostedColumnActivations(self):
+		self.updateRawColumnActivations()
+		self._boostedColumnActivations = numpy.multiply(self._rawColumnActivations, self._boostFactors)
+
 	def getMostActiveColumnsGlobal(self):
 		'''
 		Compute the top sparsity*numColumns columns by activity
 		'''
 
 		# get raw column activations (number of synapses active for each column).  Once boosting is incorporated into this model, we will not use raw activations but instead boosted activations (perhaps reversing the order of normalizing and boosting also)
-		self.updateRawColumnActivations()
+		self.updateBoostedColumnActivations()
+		#boostedActivations = numpy.multiply(self._rawColumnActivations, self._boostFactors)
 
 
 		# Get the indices that would sort rawColumnActivations
-		indices = numpy.argsort(self._rawColumnActivations)
+		#indices = numpy.argsort(self._rawColumnActivations)
+		indices = numpy.argsort(self._boostedColumnActivations)
 		indices = numpy.flip(indices,0)
 
 
@@ -259,30 +284,37 @@ class SpatialPooler:
 
 		if self._debug == True:
 			print("rawColumnActivations\n",self._rawColumnActivations)
+			print("boostedColumnActivations:\n", self._boostedColumnActivations)
 			print("maxActiveColumns = ", maxActiveColumns)
 
 		# check if we need to do any inhibition
 		self.updateUninhibitedColumnActivations()
-		if maxActiveColumns >= numpy.sum(self._uninhibitedColumnActivations):
+		#if maxActiveColumns >= numpy.sum(self._uninhibitedColumnActivations):
+		if maxActiveColumns >= len(numpy.where(self._boostedColumnActivations >= self._stimulusThreshold)[0]):
 			return numpy.copy(self._uninhibitedColumnActivations)
 
 		# compute the smallest number of synapses which still puts a column into the top active columns
-		minMaxActivity = self._rawColumnActivations[indices[maxActiveColumns-1]]
+		#minMaxActivity = self._rawColumnActivations[indices[maxActiveColumns-1]]
+		minMaxActivity = self._boostedColumnActivations[indices[maxActiveColumns-1]]
 
 		# get all uncontested activated column indices
-		maxIndices = numpy.argwhere(self._rawColumnActivations > minMaxActivity)
+		#maxIndices = numpy.argwhere(self._rawColumnActivations > minMaxActivity)
+		maxIndices = numpy.argwhere(self._boostedColumnActivations > minMaxActivity)
 		maxIndices = maxIndices[:,0]
 
 		# check if there is a tie
-		nextHighestActivation = self._rawColumnActivations[indices[maxActiveColumns]]
+		#nextHighestActivation = self._rawColumnActivations[indices[maxActiveColumns]]
+		nextHighestActivation = self._boostedColumnActivations[indices[maxActiveColumns]]
 		if nextHighestActivation < minMaxActivity:
 			activations = numpy.zeros(self._numColumns)
-			activations[self._rawColumnActivations >= minMaxActivity] = 1
+			#activations[self._rawColumnActivations >= minMaxActivity] = 1
+			activations[self._boostedColumnActivations >= minMaxActivity] = 1
 			return activations 
 
 
 		# get array of all contested activated column indices
-		contested = numpy.argwhere(self._rawColumnActivations == minMaxActivity)
+		#contested = numpy.argwhere(self._rawColumnActivations == minMaxActivity)
+		contested = numpy.argwhere(self._boostedColumnActivations == minMaxActivity)
 		contested = contested[:,0]
 
 		# randomly select however many more columns we need
@@ -307,9 +339,9 @@ class SpatialPooler:
 
 	def updateUninhibitedColumnActivations(self):
 		# no boosting, so this is the same as just thresholding and normalizing the raw activations
-		self.updateRawColumnActivations()
+		#self.updateRawColumnActivations()
 		A = numpy.zeros(self._numColumns)
-		A[self._rawColumnActivations >= self._stimulusThreshold] = 1
+		A[self._boostedColumnActivations >= self._stimulusThreshold] = 1
 		self._uninhibitedColumnActivations = A
 
 	def updateColumnActivations(self):
@@ -336,6 +368,18 @@ class SpatialPooler:
 		self.updatePermanences()
 		self.updateConnections()
 
+		if self._debug == True:
+			print("activeDutyCycles: ",self._activeDutyCycles)
+			print("columnActivations", self._columnActivations)
+			print("dutyCyclePeriod = ", self._dutyCyclePeriod)
+
+		self._activeDutyCycles = self.updateDutyCyclesHelper(self._activeDutyCycles, self._columnActivations, self._dutyCyclePeriod)
+		#self._activeDutyCycles = activeDutyCycles
+		self.updateBoostFactorsGlobal()
+
+		if self._debug == True:
+			print("boostFactors:\n",self._boostFactors)
+
 
 	def compute(self, inputVector):
 		self.updateActiveSynapses(inputVector)
@@ -344,6 +388,17 @@ class SpatialPooler:
 		
 		if self._learn == True:
 			self.learn()
+
+	def updateDutyCyclesHelper(self, dutyCycles, nextInput, windowSize):
+		assert(windowSize >= 1)
+		return (dutyCycles * (windowSize - 1.0) + nextInput) / windowSize
+
+	def updateBoostFactorsGlobal(self):
+		targetDensity = self._sparsity
+		self._boostFactors = numpy.exp( (targetDensity - self._activeDutyCycles) * self._boostStrength)
+
+	#def raisePermanenceToThreshold(self, )
+
 
 
 
@@ -360,6 +415,8 @@ if __name__ == '__main__':
 				synPermInactiveDec=0.008,
 				synPermActiveInc=0.05,
 				synConnectedPermThreshold=0.1,
+				dutyCyclePeriod=1000,
+				boostStrength=0.1,
 				learn=True,
 				seed=12345,
 				debug=True)

@@ -4,6 +4,8 @@ from BASIC_spatial_pooler import SpatialPooler
 import matplotlib.pyplot as plt
 from sklearn.datasets import load_digits
 
+from sklearn.model_selection import train_test_split
+
 digits = load_digits()
 binary_digits = load_digits()
 
@@ -44,7 +46,38 @@ if __name__ == '__main__':
 	print(type(imageData))
 	print(imageData.shape)
 
+	# test / train split
+	x_train, x_test, y_train, y_test = train_test_split(binary_digits.data, binary_digits.target, test_size=0.25, random_state=0)
+
+	# Visualize SDR training
+	N_train = 1347
+	i = 0
+	for image in x_train:
+		sp.compute(image.reshape((8,8)))
+		SDR = sp._columnActivations
+		if i % 200 == 0:
+			print(i)
+			visualizeSDR(image.reshape((8,8)), SDR.reshape((16,16)), 2.0)
+		i += 1
+
+	# classification learning
+	SDR_train = numpy.zeros((N_train, 256))
+	sp._learn = True
+	k = 0
+	for image in x_train:
+		sp.compute(image.reshape((8,8)))
+		SDR = sp._columnActivations
+		SDR_train[k] = SDR
+		if k % 200 == 0:
+			print(k)
+			visualizeSDR(image.reshape((8,8)), SDR.reshape((16,16)), 2.0)
+		k += 1
+
+	# visualize classification learning
+
+
 	# Visualize learning
+	'''
 	N = 1797
 	for i in range(N):
 		image = imageData[i]
@@ -55,6 +88,7 @@ if __name__ == '__main__':
 		if i % 100 == 0:
 			print(i)
 			visualizeSDR(image.reshape((8,8)), SDR.reshape((16,16)), 2.0)
+	'''
 
 	print("Final permanences = ", sp._permanences)
 
