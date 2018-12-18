@@ -1,0 +1,80 @@
+
+
+# 42.1875% accuracy
+
+sp = SpatialPooler(inputDimensions=(8,8),
+					columnDimensions=(16,16),
+					potentialRadius=4,
+					potentialPct=0.5,
+					globalInhibition=True,
+					localAreaDensity=0.02,
+					numActiveColumnsPerInhArea=-1.0,
+					stimulusThreshold=2,
+					synPermInactiveDec=0.008,
+					synPermActiveInc=0.05,
+					synPermConnected=0.10,
+					minPctOverlapDutyCycle=0.001,
+					dutyCyclePeriod=1000,
+					boostStrength=0.0,
+					seed=-1,
+					spVerbosity=1,
+					wrapAround=False)
+
+# 64.7% after boostStrength=3.0
+
+# 64.96% after also changing dutyCyclePeriod=100
+
+# 66.5% with sparsity at 3%
+
+# 68.97% with sparsity at 5%
+
+# 76.79% with sparsity at 10%
+
+# synPermConnected=0.30 ==> 78.57%
+
+sp = SpatialPooler(inputDimensions=(8,8),
+					columnDimensions=(16,16),
+					potentialRadius=4,
+					potentialPct=0.5,
+					globalInhibition=True,
+					localAreaDensity=0.10, #0.02,
+					numActiveColumnsPerInhArea=-1.0,
+					stimulusThreshold=2,
+					synPermInactiveDec=0.008,
+					synPermActiveInc=0.05,
+					synPermConnected=0.30,
+					minPctOverlapDutyCycle=0.005,
+					dutyCyclePeriod=100,
+					boostStrength=4.0,
+					seed=-1,
+					spVerbosity=1,
+					wrapAround=False)
+
+
+
+# 81% with sparsity at 20%
+
+# 84% with sparsity at 30%
+
+
+# 70% with 3% sparsity, boostStrength=4.0, dutyCyclePeriod=100
+sp = SpatialPooler(inputDimensions=(8,8),
+					columnDimensions=(16,16),
+					potentialRadius=4,
+					potentialPct=0.5,
+					globalInhibition=True,
+					localAreaDensity=0.03, #0.02,
+					numActiveColumnsPerInhArea=-1.0,
+					stimulusThreshold=2,
+					synPermInactiveDec=0.008,
+					synPermActiveInc=0.05,
+					synPermConnected=0.30,
+					minPctOverlapDutyCycle=0.05,
+					dutyCyclePeriod=100,
+					boostStrength=4.0,
+					seed=-1,
+					spVerbosity=1,
+					wrapAround=False)
+
+
+% 71% with dutyCyclePeriod=500

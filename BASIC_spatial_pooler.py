@@ -130,6 +130,7 @@ class SpatialPooler:
 				 synPermInactiveDec=0.008,
 				 synPermActiveInc=0.05,
 				 synConnectedPermThreshold=0.1,
+				 minPctActiveDutyCycles=0.001,
 				 dutyCyclePeriod=1000,
 				 boostStrength=0.0,
 				 learn=True,
@@ -158,6 +159,8 @@ class SpatialPooler:
 		self._synPermActiveInc = synPermActiveInc
 		self._synConnectedPermThreshold = synConnectedPermThreshold
 
+		#self._synBelowStimulusPermInc = synPermActiveInc / 2.0
+
 		self._synBelowStimulusPermInc = 0.05
 		self._dutyCyclePeriod = dutyCyclePeriod
 
@@ -169,7 +172,8 @@ class SpatialPooler:
 
 		Permanences = self.initPermanences()
 		self._permanences = Permanences
-		self._connectedSynapses = self.initConnections(Permanences, synConnectedPermThreshold)
+		connectedSynapses = self.initConnections(Permanences, synConnectedPermThreshold)
+		self._connectedSynapses = connectedSynapses
 
 		self._activePotentialSynapses = numpy.zeros((numColumns, numInputs))
 		self._activeConnectedSynapses = numpy.zeros((numColumns, numInputs))
@@ -182,11 +186,16 @@ class SpatialPooler:
 		self._boostFactors = numpy.ones(numColumns)
 		activeDutyCycles = numpy.ones(numColumns)
 		#self._activeDutyCycles = activeDutyCycles.fill(sparsity)
-		self._activeDutyCycles = self.initActiveDutyCycles(sparsity, numColumns)
+		activeDutyCycles = self.initActiveDutyCycles(sparsity, numColumns)
+		self._activeDutyCycles = activeDutyCycles
 		#print("activeDutyCycles", activeDutyCycles)
 
 		self._boostStrength = boostStrength
 		self._boostFactors = numpy.ones(numColumns)
+
+		self._connectedCounts = numpy.sum(connectedSynapses, -1) # sum along rows on ndarray
+		self._minPctActiveDutyCycles = minPctActiveDutyCycles
+		self._minActiveDutyCycles = minPctActiveDutyCycles * activeDutyCycles.max()
 
 		self._learn = learn 
 		self._iterNumber = 0
@@ -338,7 +347,16 @@ class SpatialPooler:
 		return activations
 
 
-		
+	def stochasticGetMostActiveColumnsGlobal(self):
+		self.updateBoostedColumnActivations()
+
+		#compute max number of active columns
+		maxActiveColumns = max(int(round(self._sparsity * self._numColumns)),1)
+
+		# columns over threshold
+		tentativelyActiveColumns = numpy.zeros(self._numColumns)
+		tentativelyActiveColumns[self._boostedColumnActivations > ]
+
 
 	def updateUninhibitedColumnActivations(self):
 		# no boosting, so this is the same as just thresholding and normalizing the raw activations
@@ -366,10 +384,64 @@ class SpatialPooler:
 		mask = numpy.where(self._permanences >= self._synConnectedPermThreshold)
 		self._connectedSynapses = numpy.zeros(self._flatDataShape)
 		self._connectedSynapses[mask] = 1
+		self.updateConnectedCounts()
+
+	def updateConnectedCounts(self):
+		self._connectedCounts = numpy.sum(self._connectedSynapses, -1)
+
+	def updateMinDutyCycles(self):
+		# TODO:  change "cycles" to "cycle" since only one value is stored globally
+		self._minActiveDutyCycles = self._minPctActiveDutyCycles * self._activeDutyCycles.max()
+
+	def bumpUpWeakColumns(self):
+		weakColumns = numpy.where(self._activeDutyCycles < self._minActiveDutyCycles)[0] #ndarray
+
+		for c in weakColumns:
+			perm = self._permanences[c]
+			delta = self._synBelowStimulusPermInc * self._potentialConnections[c]
+			perm += delta
+			numpy.clip(perm, 0.0, 1.0, out=perm)
+			self.updateColumnPermanences(c, perm)
+		self.updateConnectedCounts()
+
+
+	def updateColumnConnections(self, columnIndex):
+		perms = self._permanences[columnIndex]
+		connectedSynapses = numpy.where(perms > self._synConnectedPermThreshold)[0]
+		connections = numpy.zeros(self._numInputs)
+		connections[connectedSynapses] = 1.0
+		self._connectedSynapses[columnIndex] = connections
+
+	def updateColumnPermanences(self, columnIndex, perm):
+		self._permanences[columnIndex] = perm
+		self.updateColumnConnections(columnIndex)
+
+
+	def raiseColumnsToStimulusThreshold(self):
+		# Some columns may not have enough connections to reach the stimulusThreshold, even if all of their inputs are active.  We want to identify any columns suffering from this column and bump up all of their potential synapse permanence values
+		underThresholdColumns = numpy.where(self._connectedCounts < self._stimulusThreshold)[0]
+
+		while len(underThresholdColumns) > 0:
+			for c in underThresholdColumns:
+				perm = self._permanences[c]
+				delta = self._synBelowStimulusPermInc * self._potentialConnections[c]
+				perm += delta
+				numpy.clip(perm, 0.0, 1.0, out=perm)
+				self.updateColumnPermanences(c, perm)
+			self.updateConnectedCounts()
+			underThresholdColumns = numpy.where(self._connectedCounts < self._stimulusThreshold)[0]
+
+	def noColumnLeftBehind(self):
+		self.bumpUpWeakColumns()
+		self.raiseColumnsToStimulusThreshold()
+
+
+
 
 	def learn(self):
 		self.updatePermanences()
 		self.updateConnections()
+		#$self.noColumnLeftBehind()
 
 		if self._debug == True:
 			print("activeDutyCycles: ",self._activeDutyCycles)
@@ -378,7 +450,9 @@ class SpatialPooler:
 
 		self._activeDutyCycles = self.updateDutyCyclesHelper(self._activeDutyCycles, self._columnActivations, self._dutyCyclePeriod)
 		#self._activeDutyCycles = activeDutyCycles
-		self.updateBoostFactorsGlobal()
+		if self._iterNumber % self._dutyCyclePeriod == 0:
+			self.updateBoostFactorsGlobal()
+			self.noColumnLeftBehind()
 
 		if self._debug == True:
 			print("boostFactors:\n",self._boostFactors)
@@ -391,6 +465,8 @@ class SpatialPooler:
 		
 		if self._learn == True:
 			self.learn()
+
+		self._iterNumber += 1
 		
 
 	def updateDutyCyclesHelper(self, dutyCycles, nextInput, windowSize):
@@ -421,6 +497,7 @@ if __name__ == '__main__':
 				synPermInactiveDec=0.008,
 				synPermActiveInc=0.05,
 				synConnectedPermThreshold=0.1,
+				minPctActiveDutyCycles=0.001,
 				dutyCyclePeriod=1000,
 				boostStrength=0.1,
 				learn=False,

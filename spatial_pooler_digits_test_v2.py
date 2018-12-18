@@ -34,12 +34,13 @@ if __name__ == '__main__':
 	synPermInactiveDec = 0.008
 	synPermActiveInc = 0.05
 	synConnectedPermThreshold = 0.10
+	minPctActiveDutyCycles=0.001
 	dutyCyclePeriod=100
 	boostStrength=1.0
 	learn=False
 	seed=12345
 	debug=False
-	sp = SpatialPooler(inputDimensions, columnDimensions, potentialRadius, potentialPct, sparsity, stimulusThreshold, synPermInactiveDec, synPermActiveInc, synConnectedPermThreshold, dutyCyclePeriod, boostStrength, learn, seed, debug)
+	sp = SpatialPooler(inputDimensions, columnDimensions, potentialRadius, potentialPct, sparsity, stimulusThreshold, synPermInactiveDec, synPermActiveInc, synConnectedPermThreshold, minPctActiveDutyCycles, dutyCyclePeriod, boostStrength, learn, seed, debug)
 
 	# get image data
 	imageData = binary_digits.data
@@ -58,11 +59,11 @@ if __name__ == '__main__':
 	# Visualize SDR training
 	N_train = 1347
 	i = 0
-	for image in x_train[0:10]:
+	for image in x_train[0:100]:
 		sp.compute(image.reshape((8,8)))
 		SDR = sp._columnActivations
 		#if i % 500 == 0:
-		if i % 1 == 0:
+		if i % 20 == 0:
 			print(i)
 			visualizeSDR(image.reshape((8,8)), SDR.reshape((16,16)), 2.0)
 			print("connections unchanged: ", numpy.array_equal(sp._connectedSynapses, initial_connections))
